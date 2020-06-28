@@ -83,6 +83,25 @@ def insert_unfollow(user_unfollow):
     """), user_unfollow).rowcount
 
 
+def get_timeline(user_id):
+    timeline = current_app.db.execute(text("""
+        SELECT 
+            t.user_id,
+            t.tweet
+        FROM tweets as t 
+        LEFT JOIN users_follow_list as ufl ON ufl.user_id = :user_id
+        WHERE t.user_id = :user_id
+        OR t.user_id = ufl.follow_user_id
+    """), {
+        'user_id': user_id
+    }).fetchall()
+
+    return [{
+        'user_id': tweet['user_id']
+        'tweet': tweet['tweet']
+    } for tweet in timeline]
+
+
 def create_app(test_config = None):
     app = Flask(__name__)
 
@@ -127,11 +146,19 @@ def create_app(test_config = None):
 
         return '', 200
 
-    # @app.route('/unfollow', methods=['POST'])
-    #
-    # @app.route('/timeline/<int:user_id>', methods=['GET'])
-    # def timeline(user_id):
-    #     return
+    @app.route('/unfollow', methods=['POST'])
+    def follow():
+        payload = request.json
+        insert_unfollow(payload)
+
+        return '', 200
+
+    @app.route('/timeline/<int:user_id>', methods=['GET'])
+    def timeline(user_id):
+        return jsonify({
+            'user_id': user_id,
+            'timeline': get_timeline(user_id)
+        })
 
     return app
 
