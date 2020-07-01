@@ -1,11 +1,12 @@
+import bcrypt
+import jwt
+import datetime
+
 from flask import Flask, jsonify, request, current_app, Response, g
 from flask.json import JSONEncoder
 from sqlalchemy import create_engine, text
 from functools import wraps
-
-import bcrypt
-import jwt
-import datetime
+from flask_cors import CORS
 
 
 # Default JSON encorder 는 set 을 JSON 으로 변환할 수 없음
@@ -17,21 +18,6 @@ class CustomJSONEncoder(JSONEncoder):
             return list(obj)
 
         return JSONEncoder.default(self, obj)
-
-def insert_user(user):
-    return current_app.db.execute(text("""
-        INSERT INTO users (
-            name, 
-            email,
-            profile,
-            hashed_password
-        ) VALUES (
-            :name,
-            :email,
-            :profile,
-            :password
-        )
-    """), user).lastrowid
 
 
 def get_user_info(user_id):
@@ -53,6 +39,22 @@ def get_user_info(user_id):
         'email': user['email'],
         'profile': user['profile']
     } if user else None
+
+
+def insert_user(user):
+    return current_app.db.execute(text("""
+        INSERT INTO users (
+            name, 
+            email,
+            profile,
+            hashed_password
+        ) VALUES (
+            :name,
+            :email,
+            :profile,
+            :password
+        )
+    """), user).lastrowid
 
 
 def insert_tweet(user_tweet):
@@ -93,7 +95,7 @@ def get_timeline(user_id):
             t.user_id,
             t.tweet
         FROM tweets as t 
-        LEFT JOIN users_follow_list as ufl ON ufl.user_id = :user_id
+        LEFT JOIN users_follow_list ufl ON ufl.user_id = :user_id
         WHERE t.user_id = :user_id
         OR t.user_id = ufl.follow_user_id
     """), {
@@ -121,11 +123,13 @@ def get_user_id_and_password(email):
     } if row else None
 
 
-# 인증 decorator 함수
-def login_required(f): # 사용자가 로그인을 한 상태에서만 실행
+###########################################
+#          인증 decorator 함수
+###########################################
+def login_required(f):  # 사용자가 로그인을 한 상태에서만 실행
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        access_token = request.headers.get('Authorization') # access token 얻음
+        access_token = request.headers.get('Authorization')  # request header 에서 access token 얻음
         if access_token is not None:
             try:
                 payload = jwt.decode(access_token, current_app.config['JWT_SECRET_KEY'], 'HS256')
@@ -147,6 +151,7 @@ def login_required(f): # 사용자가 로그인을 한 상태에서만 실행
 
 def create_app(test_config=None):
     app = Flask(__name__)
+    CORS(app)
 
     app.json_encoder = CustomJSONEncoder
 
@@ -208,7 +213,7 @@ def create_app(test_config=None):
 
         insert_tweet(user_tweet)
 
-        return '', 200
+        return 'success', 200
 
     @app.route('/follow', methods=['POST'])
     @login_required
@@ -233,6 +238,15 @@ def create_app(test_config=None):
             'timeline': get_timeline(user_id)
         })
 
+    @app.route('/timeline', methods=['GET'])
+    @login_required
+    def user_timeline():
+        user_id = g.user_id
+
+        return jsonify({
+            'user_id': user_id,
+            'timeline': get_timeline(user_id)
+        })
     return app
 
 
